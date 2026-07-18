@@ -1,129 +1,144 @@
---Animation System--
-WhereIsFolder = game.Workspace.ROPE_SAG
-ChairAmount = WhereIsFolder.config.NumberOfChairs.Value
-GripSetup = WhereIsFolder.LiftAnimations
-ChairAmount = WhereIsFolder.config.NumberOfChairs.Value
-ServerStorage =  game.ReplicatedStorage.ANIM_SAG.grips
-zoneLoaded = script.zoneLoaded.Value
-
-Lift = WhereIsFolder.LiftAnimations
-SpeedValue = WhereIsFolder.config.LiftSpeed.Value
-
-local CurrentNumber = 2
-
-task.wait(6)
-
-for i = 2, ChairAmount, 1 do
-	local GripTest = ServerStorage.ChairGrip
-	CloneChair = GripTest:Clone()
-	CloneChair.Name = "C"..CurrentNumber
-	CloneChair.Parent = GripSetup
-	CurrentNumber = CurrentNumber + 1
-end
-
-variables = {
-	animation = WhereIsFolder.config.Animation,
-}
-
-local AnimationVariables = {}
-local RodTable = {}
-
-for t = 2, ChairAmount, 1 do
-	local loadedAnim = Lift["C"..t].AnimationController:LoadAnimation(variables.animation)
-	table.insert(AnimationVariables, loadedAnim)
-end
-
-local LengthAnimationTrack = WhereIsFolder.ServerLiftAnimations["C1"].AnimationController:LoadAnimation(variables.animation)
-
-task.wait(3)
-
-local places = 3 
-local Number2 = LengthAnimationTrack.Length
-local mult = 10^places
-AnimationLength = math.floor(Number2*mult)/mult
-
-local LoopVariable = 1
-TimePosition = 0
-AddTimePerChair = (AnimationLength/ChairAmount)
-
-for i = 2, ChairAmount, 1 do
-	local anim1 = AnimationVariables[LoopVariable]
-	anim1:Play()
-	anim1.TimePosition = TimePosition
-	anim1:AdjustSpeed(SpeedValue*0)
-	TimePosition = TimePosition + AddTimePerChair
-	LoopVariable = LoopVariable + 1
-end
-
-local LoopVariable = 1
-
-for i = 2, ChairAmount, 1 do
-	local anim1 = AnimationVariables[LoopVariable]
-	anim1:AdjustSpeed(SpeedValue/10)
-	LoopVariable = LoopVariable + 1
-end
-
-WhereIsFolder.Chairs.C1.grip.AttachPart.Weld.Part1 = WhereIsFolder.ServerLiftAnimations.C1.GripPart
-
-for i = 2, ChairAmount, 1 do
-	WhereIsFolder.Chairs["C"..i].grip.AttachPart.Weld.Part1 = WhereIsFolder.LiftAnimations["C"..i].GripPart
-end
-
-WhereIsFolder.config.LiftSpeed.Changed:Connect(function()
-	local LoopVariable = 1
-
-	for i = 1, ChairAmount, 1 do
-		local anim1 = AnimationVariables[LoopVariable]
-		anim1:AdjustSpeed(SpeedValue/10)
-		LoopVariable = LoopVariable + 1
-	end
-end)
-
 --[[
-
-test:GetMarkerReachedSignal("connect"):Connect(function(paramString)
-		print("connecting")
-		local AnimationNumber = AnimationNumberValue
-		local Sheave = WhereIsFolder.Sheaves["S"..paramString]
-		local chair
-
-		if AnimationNumber == 1 then
-			chair = WhereIsFolder.ServerLiftAnimations["C1"]
-		else
-			chair = WhereIsFolder.LiftAnimations["C"..AnimationNumber]
-		end
-
-		if Sheave.Chairs.Value <= 0 then
-			Sheave.FrontChair.Value = Lift["C"..AnimationNumber]
-
-			Sheave.RodConstraint.Attachment1 = Sheave.FrontChair.Value.GripPart.front
-			chair.RodConstraint.Attachment1 = Sheave.SectionEnd.End
-			Sheave.Chairs.Value += 1
-		else
-			Sheave.RodConstraint.Attachment1 = Sheave.FrontChair.Value.GripPart.front
-			chair.RodConstraint.Attachment1 = Sheave.SectionEnd.End
-			Sheave.Chairs.Value += 1
-		end
-	end)	
-
+	============================================================
+	 AccelSystems Cable SAG
+	 Module   : Lift Animation Synchronization
+	 Type     : Client
+	============================================================
 --]]
 
-function liftSync(AnimationNumberValue, TimePosition1)
-	if zoneLoaded.Value == true then
-		local AnimationNumberThing = AnimationNumberValue
-		for i = 2, ChairAmount, 1 do
-			local anim1 = AnimationVariables[AnimationNumberThing]
-			if TimePosition1 > AnimationLength then
-				TimePosition1 = TimePosition1 - AnimationLength
-				anim1.TimePosition = TimePosition1 - 2
+local CableSagFolder     = game.Workspace.ROPE_SAG
+local GripTemplatesFolder = game.ReplicatedStorage.ANIM_SAG.grips
+local ChairCount    = CableSagFolder.config.NumberOfChairs.Value
+local LiftSpeed     = CableSagFolder.config.LiftSpeed.Value
+local LiftAnimationsFolder = CableSagFolder.LiftAnimations
+
+local ZoneLoadedValue = script.zoneLoaded.Value
+
+print(("[AccelSystems Cable SAG] Booting lift sync :: %d chairs configured"):format(ChairCount))
+
+task.wait(8)
+
+local chairNumber = 2
+for i = 2, ChairCount, 1 do
+	local ChairGripTemplate = GripTemplatesFolder.ChairGrip
+	local newChairGrip = ChairGripTemplate:Clone()
+	newChairGrip.Name = "C" .. chairNumber
+	newChairGrip.Parent = LiftAnimationsFolder
+	chairNumber = chairNumber + 1
+end
+print(("[AccelSystems Cable SAG] Cloned grips C2 -> C%d"):format(ChairCount))
+
+-- Loads the sag animation onto anim controllers
+local AnimationConfig = {
+	animation = CableSagFolder.config.Animation,
+}
+
+local LiftAnimationTracks = {}
+
+for t = 2, ChairCount, 1 do
+	local loadedAnim = LiftAnimationsFolder["C" .. t].AnimationController:LoadAnimation(AnimationConfig.animation)
+	table.insert(LiftAnimationTracks, loadedAnim)
+end
+
+-- Get reference anim track
+local ReferenceAnimationTrack = CableSagFolder.ServerLiftAnimations["C1"].AnimationController:LoadAnimation(AnimationConfig.animation)
+task.wait(3)
+
+local ROUND_PLACES = 3
+local RoundingMultiplier = 10 ^ ROUND_PLACES
+local AnimationLength = math.floor(ReferenceAnimationTrack.Length * RoundingMultiplier) / RoundingMultiplier
+
+print(("[AccelSystems Cable SAG] Animation length resolved: %.3f"):format(AnimationLength))
+
+local TimeOffsetPerChair = AnimationLength / ChairCount
+local stagingTimePosition = 0
+local trackIndex = 1
+
+for i = 2, ChairCount, 1 do
+	local animTrack = LiftAnimationTracks[trackIndex]
+	animTrack:Play()
+	animTrack.TimePosition = stagingTimePosition
+	animTrack:AdjustSpeed(LiftSpeed * 0) -- hold in place until sync kicks in
+	stagingTimePosition = stagingTimePosition + TimeOffsetPerChair
+	trackIndex = trackIndex + 1
+end
+
+-- Start
+trackIndex = 1
+for i = 2, ChairCount, 1 do
+	local animTrack = LiftAnimationTracks[trackIndex]
+	animTrack:AdjustSpeed(LiftSpeed / 10)
+	trackIndex = trackIndex + 1
+end
+
+print("[AccelSystems Cable SAG] Chairs staggered and animating.")
+
+-- Weld Grips
+CableSagFolder.Chairs.C1.grip.AttachPart.Weld.Part1 = CableSagFolder.ServerLiftAnimations.C1.GripPart
+
+for i = 2, ChairCount, 1 do
+	CableSagFolder.Chairs["C" .. i].grip.AttachPart.Weld.Part1 = LiftAnimationsFolder["C" .. i].GripPart
+end
+
+print("[AccelSystems Cable SAG] Grip welds attached to all chairs. Rig is live.")
+
+-- Live updates
+CableSagFolder.config.LiftSpeed.Changed:Connect(function()
+	local liveTrackIndex = 1
+	for i = 2, ChairCount, 1 do
+		local animTrack = LiftAnimationTracks[liveTrackIndex]
+		animTrack:AdjustSpeed(LiftSpeed / 10)
+		liveTrackIndex = liveTrackIndex + 1
+	end
+	print("[AccelSystems Cable SAG] LiftSpeed changed -> speeds re-applied.")
+end)
+
+-- REMOTE SYNC — Client -> Server lift TimePosition sync
+local function onLiftSync(startChairIndex, syncTimePosition)
+	if ZoneLoadedValue == true then
+		local chairIndex = startChairIndex
+		for i = 2, ChairCount, 1 do
+			local animTrack = LiftAnimationTracks[chairIndex]
+			if syncTimePosition > AnimationLength then
+				syncTimePosition = syncTimePosition - AnimationLength
+				animTrack.TimePosition = syncTimePosition - 2
 			else
-				anim1.TimePosition = TimePosition1 - 2
+				animTrack.TimePosition = syncTimePosition - 2
 			end
-			AnimationNumberThing += 1
-			TimePosition1 = TimePosition1 + AddTimePerChair
+			chairIndex += 1
+			syncTimePosition = syncTimePosition + TimeOffsetPerChair
 		end
 	end
 end
 
+game.ReplicatedStorage.ANIM_SAG.remotes.liftSync.OnClientEvent:Connect(onLiftSync)
 
-game.ReplicatedStorage.ANIM_SAG.remotes.liftSync.OnClientEvent:Connect(liftSync)
+print("[AccelSystems Cable SAG] liftSync listener connected. System ready.")
+
+--[[
+	------------------------------------------------------------
+	 Reference only — Sheave hookup logic
+	------------------------------------------------------------
+
+	test:GetMarkerReachedSignal("connect"):Connect(function(sheaveId)
+		print("connecting")
+		local chairNumber = startChairIndex
+		local Sheave = CableSagFolder.Sheaves["S" .. sheaveId]
+		local chair
+		if chairNumber == 1 then
+			chair = CableSagFolder.ServerLiftAnimations["C1"]
+		else
+			chair = LiftAnimationsFolder["C" .. chairNumber]
+		end
+		if Sheave.Chairs.Value <= 0 then
+			Sheave.FrontChair.Value = LiftAnimationsFolder["C" .. chairNumber]
+			Sheave.RodConstraint.Attachment1 = Sheave.FrontChair.Value.GripPart.front
+			chair.RodConstraint.Attachment1 = Sheave.SectionEnd.End
+			Sheave.Chairs.Value += 1
+		else
+			Sheave.RodConstraint.Attachment1 = Sheave.FrontChair.Value.GripPart.front
+			chair.RodConstraint.Attachment1 = Sheave.SectionEnd.End
+			Sheave.Chairs.Value += 1
+		end
+	end)
+--]]
